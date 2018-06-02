@@ -5,6 +5,5 @@ At the top bar (Which may not show at first, a bug I don't know the cause of), y
 Once a gate is spawned, you can drag it around, or click and connect the Ins/Outs connections, and make circuits.
 
 TODO:
--Make gates spawn at center of screen rather than 0,0.
--Implement some sort of time concept to logic, rather than current instant check system.
--Fix bug with the menu bar not showing until you hover over it.
+-Implement some sort of time concept to logic, rather than current instant check system.  
+-Fix bug with the menu bar not showing until you hover over it.  
