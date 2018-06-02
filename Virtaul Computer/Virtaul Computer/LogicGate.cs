@@ -4,6 +4,9 @@ namespace Virtaul_Computer
 {
     public class LogicGate
     {
+        private static List<LogicGate> _GateTable = new List<LogicGate>();
+        public static LogicGate[] GateTable => _GateTable.ToArray();
+
         public LogicGate In1Gate { get; set; }
         public LogicGate In2Gate { get; set; }
 
@@ -12,11 +15,16 @@ namespace Virtaul_Computer
 
         public GateType GateType { get; set; }
 
+        public bool IsButtonOrSwitch => 
+            GateType == GateType.ON || GateType == GateType.OFF || GateType == GateType.BUTTON_OFF || GateType == GateType.BUTTON_ON;
+
         public LogicGate(GateType type, LogicGate in1, LogicGate in2)
         {
             GateType = type;
             In1Gate = in1;
             In2Gate = in2;
+
+            _GateTable.Add(this);
         }
 
         public bool Check()
@@ -82,6 +90,23 @@ namespace Virtaul_Computer
                     return true;
                 default:
                     return false;
+            }
+        }
+
+        public void Remove()
+        {
+            _GateTable.Remove(this);
+
+            foreach (var gate in _GateTable)
+            {
+                if (gate.In1Gate == this)
+                {
+                    gate.In1Gate = null;
+                }
+                if (gate.In2Gate == this)
+                {
+                    gate.In2Gate = null;
+                }
             }
         }
     }

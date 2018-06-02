@@ -1,26 +1,28 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
 using System.Drawing;
-using System.Linq;
 using System.Reflection;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace Virtaul_Computer
 {
     public partial class MainForm : Form
     {
+        public static bool Debug { get; set; } = false;
+        public static bool DrawGrid { get; set; } = true;
+
         public DateTime MouseButtonDownTime { get; set; }
         public bool IsMouseButtonDown { get; set; }
+        public Point MouseDownLocation { get; set; } = new Point(0, 0);
         public VisualLogicGate SelectedGate { get; set; }
         public Size GrabOffset { get; set; }
         
         public bool IsConnectionBeingDragged { get; set; }
         public VisualLogicGate ConnectionDraggingFrom { get; set; }
+
+        public int ViewX { get; set; } = 0;
+        public int ViewY { get; set; } = 0;
+        public float ViewSize { get; set; } = 1f;
 
         public MainForm() => 
             InitializeComponent();
@@ -48,23 +50,70 @@ namespace Virtaul_Computer
 
         private void DrawPanel_Paint(object sender, PaintEventArgs e)
         {
+            //Scale Limits
+            if (ViewSize > 2.5)
+            {
+                ViewSize = 2.5f;
+            }
+
+            if (ViewSize < 0.5f)
+            {
+                ViewSize = 0.5f;
+            }
+
+            if (DownKeys.Contains(Keys.Left))
+            {
+                ViewX += 4;
+            }
+            if (DownKeys.Contains(Keys.Right))
+            {
+                ViewX -= 4;
+            }
+            if (DownKeys.Contains(Keys.Up))
+            {
+                ViewY += 4;
+            }
+            if (DownKeys.Contains(Keys.Down))
+            {
+                ViewY -= 4;
+            }
+
+            //Camera
+            e.Graphics.ScaleTransform(1 / ViewSize, 1 / ViewSize);
+            e.Graphics.TranslateTransform(ViewX, ViewY);
+
             // Make Sure Antialiasing is on.
             e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
             //Draw Grid
-            var gridImage = (Bitmap)VisualLogicGate.GateImages["GRID"];
-            for (var x = 0; x < 5; x++)
+            if (DrawGrid)
             {
-                for (var y = 0; y < 5; y++)
+                var countX = 5 * ViewSize;
+                var countY = 5 * ViewSize;
+
+                var gridImage = (Bitmap)VisualLogicGate.GateImages["GRID"];
+                for (var x = 0; x < countX; x++)
                 {
-                    e.Graphics.DrawImage(gridImage, new Point(160 * x, 160 * y));
+                    for (var y = 0; y < countY; y++)
+                    {
+                        e.Graphics.DrawImage(gridImage, new Point((160 * x) - ViewX, (160 * y) - ViewY));
+                    }
                 }
             }
 
             // Tell each gate to draw.
-            foreach (var gate in VisualLogicGate.Gates)
+            foreach (var gate in LogicGate.GateTable)
             {
-                gate.Draw(e.Graphics);
+                if (gate is VisualLogicGate vGate)
+                {
+                    vGate.Draw(e.Graphics);
+
+                    //Draw Bound Box
+                    if (Debug)
+                    {
+                        e.Graphics.DrawRectangle(Pens.Red, vGate.InputBounds);
+                    }
+                }
             }
 
             // If you are currently dragging a connection, draw it.
@@ -77,52 +126,99 @@ namespace Virtaul_Computer
             drawPanel.Invalidate();
         }
 
+        private void MainForm_KeyPress(object sender, KeyPressEventArgs e)
+        {
+            switch (e.KeyChar)
+            {
+                case '+':
+                    ViewSize /= 1.1f;
+                    break;
+                case '-':
+                    ViewSize *= 1.1f;
+                    break;
+            }
+        }
+
+        List<Keys> DownKeys = new List<Keys>();
+
+        private void MainForm_KeyDown(object sender, KeyEventArgs e)
+        {
+            while (!DownKeys.Contains(e.KeyCode))
+            {
+                DownKeys.Add(e.KeyCode);
+            }
+        }
+
+        private void MainForm_KeyUp(object sender, KeyEventArgs e)
+        {
+            while (DownKeys.Contains(e.KeyCode))
+            {
+                DownKeys.Remove(e.KeyCode);
+            }
+        }
+
         private void DrawPanel_MouseUp(object sender, MouseEventArgs e)
         {
             IsMouseButtonDown = false;
 
             if (SelectedGate != null)
             {
-                if (SelectedGate.GateType == GateType.ON)
+                if (SelectedGate.IsButtonOrSwitch)
                 {
-                    SelectedGate.GateType = GateType.OFF;
-                }
-                else if (SelectedGate.GateType == GateType.OFF)
-                {
-                    SelectedGate.GateType = GateType.ON;
-                }
-            }
-            
-            var rec = new Rectangle(SelectedGate.Location, new Size(VisualLogicGate.GateSize, VisualLogicGate.GateSize));
+                    //Switch toggling.
+                    if (SelectedGate.InputBounds.Contains(MouseDownLocation))
+                    {
+                        if (SelectedGate.GateType == GateType.ON)
+                        {
+                            SelectedGate.GateType = GateType.OFF;
+                        }
+                        else if (SelectedGate.GateType == GateType.OFF)
+                        {
+                            SelectedGate.GateType = GateType.ON;
+                        }
 
-            if (rec.Contains(e.Location))
-            {
-                if (SelectedGate.GateType == GateType.BUTTON_ON)
-                {
-                    SelectedGate.GateType = GateType.BUTTON_OFF;
+                        //Button goes off when mouse button is raised.
+                        if (SelectedGate.GateType == GateType.BUTTON_ON)
+                        {
+                            SelectedGate.GateType = GateType.BUTTON_OFF;
+                        }
+                    }
                 }
             }
         }
 
         private void DrawPanel_MouseDown(object sender, MouseEventArgs e)
         {
+            MouseDownLocation = new Point((int)(e.Location.X * ViewSize), (int)(e.Location.Y * ViewSize));
             MouseButtonDownTime = DateTime.Now;
             IsMouseButtonDown = true;
 
-            foreach (var gate in VisualLogicGate.Gates)
+            var foundGate = false;
+
+            foreach (var gate in LogicGate.GateTable)
             {
-                var rec = new Rectangle(gate.Location, new Size(VisualLogicGate.GateSize, VisualLogicGate.GateSize));
-
-                if (rec.Contains(e.Location))
+                if (gate is VisualLogicGate vGate)
                 {
-                    SelectedGate = gate;
-                    GrabOffset = new Size(e.Location.X - gate.Location.X, e.Location.Y - gate.Location.Y);
-
-                    if (gate.GateType == GateType.BUTTON_OFF)
+                    if (vGate.InputBounds.Contains(MouseDownLocation))
                     {
-                        gate.GateType = GateType.BUTTON_ON;
+                        if (gate.GateType == GateType.BUTTON_OFF)
+                        {
+                            gate.GateType = GateType.BUTTON_ON;
+                        }
+                    }
+
+                    if (vGate.Bounds.Contains(MouseDownLocation))
+                    {
+                        foundGate = true;
+                        SelectedGate = vGate;
+                        GrabOffset = new Size(MouseDownLocation.X - vGate.Location.X, MouseDownLocation.Y - vGate.Location.Y);
                     }
                 }
+            }
+
+            if (!foundGate)
+            {
+                SelectedGate = null;
             }
         }
 
@@ -130,13 +226,24 @@ namespace Virtaul_Computer
 
         private void DrawPanel_MouseMove(object sender, MouseEventArgs e)
         {
-            mouseLocation = e.Location;
+            mouseLocation = new Point((int)(e.Location.X * ViewSize), (int)(e.Location.Y * ViewSize));
 
-            if (IsMouseButtonDown)
+            if (SelectedGate != null)
             {
-                var between = DateTime.Now - MouseButtonDownTime;
-                
-                SelectedGate.Location = new Point(e.Location.X - GrabOffset.Width, e.Location.Y - GrabOffset.Height);
+                if (IsMouseButtonDown)
+                {
+                    if (SelectedGate.IsButtonOrSwitch)
+                    {
+                        if (!SelectedGate.InputBounds.Contains(MouseDownLocation))
+                        {
+                            SelectedGate.Location = new Point(mouseLocation.X - GrabOffset.Width, mouseLocation.Y - GrabOffset.Height);
+                        }
+                    }
+                    else
+                    {
+                        SelectedGate.Location = new Point(mouseLocation.X - GrabOffset.Width, mouseLocation.Y - GrabOffset.Height);
+                    }
+                }
             }
         }
 
@@ -144,40 +251,43 @@ namespace Virtaul_Computer
         {
             restartLoop:;
 
-            foreach (var gate in VisualLogicGate.Gates)
+            foreach (var gate in VisualLogicGate.GateTable)
             {
-                if (e.Button == MouseButtons.Left)
+                if (gate is VisualLogicGate vGate)
                 {
-                    if (gate.Out1NodeLocation.Contains(e.Location) && !IsConnectionBeingDragged)
+                    if (e.Button == MouseButtons.Left)
                     {
-                        IsConnectionBeingDragged = true;
-                        ConnectionDraggingFrom = gate;
+                        if (vGate.Out1NodeLocation.Contains(e.Location) && !IsConnectionBeingDragged)
+                        {
+                            IsConnectionBeingDragged = true;
+                            ConnectionDraggingFrom = vGate;
+                        }
+                        else if (vGate.In1NodeLocation.Contains(e.Location) && IsConnectionBeingDragged && ConnectionDraggingFrom != null)
+                        {
+                            IsConnectionBeingDragged = false;
+                            vGate.In1Gate = ConnectionDraggingFrom;
+                        }
+                        else if (vGate.In2NodeLocation.Contains(e.Location) && IsConnectionBeingDragged && ConnectionDraggingFrom != null)
+                        {
+                            IsConnectionBeingDragged = false;
+                            vGate.In2Gate = ConnectionDraggingFrom;
+                        }
                     }
-                    else if (gate.In1NodeLocation.Contains(e.Location) && IsConnectionBeingDragged && ConnectionDraggingFrom != null)
+                    else if (e.Button == MouseButtons.Right)
                     {
-                        IsConnectionBeingDragged = false;
-                        gate.In1Gate = ConnectionDraggingFrom;
-                    }
-                    else if (gate.In2NodeLocation.Contains(e.Location) && IsConnectionBeingDragged && ConnectionDraggingFrom != null)
-                    {
-                        IsConnectionBeingDragged = false;
-                        gate.In2Gate = ConnectionDraggingFrom;
-                    }
-                }
-                else if (e.Button == MouseButtons.Right)
-                {
-                    if (gate.In1NodeLocation.Contains(e.Location))
-                    {
-                        gate.In1Gate = null;
-                    }
-                    else if (gate.In2NodeLocation.Contains(e.Location))
-                    {
-                        gate.In2Gate = null;
-                    }
-                    else if ((new Rectangle(gate.Location, new Size(VisualLogicGate.GateSize, VisualLogicGate.GateSize))).Contains(e.Location))
-                    {
-                        gate.Remove();
-                        goto restartLoop;
+                        if (vGate.In1NodeLocation.Contains(e.Location))
+                        {
+                            vGate.In1Gate = null;
+                        }
+                        else if (vGate.In2NodeLocation.Contains(e.Location))
+                        {
+                            vGate.In2Gate = null;
+                        }
+                        else if ((new Rectangle(vGate.Location, new Size(VisualLogicGate.GateSize, VisualLogicGate.GateSize))).Contains(e.Location))
+                        {
+                            vGate.Remove();
+                            goto restartLoop;
+                        }
                     }
                 }
             }
