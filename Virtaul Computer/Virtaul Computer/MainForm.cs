@@ -189,7 +189,7 @@ namespace Virtaul_Computer
 
         private void DrawPanel_MouseDown(object sender, MouseEventArgs e)
         {
-            MouseDownLocation = new Point((int)(e.Location.X * ViewSize), (int)(e.Location.Y * ViewSize));
+            MouseDownLocation = new Point((int)(e.Location.X * ViewSize) - ViewX, (int)(e.Location.Y * ViewSize) - ViewY);
             MouseButtonDownTime = DateTime.Now;
             IsMouseButtonDown = true;
 
@@ -226,7 +226,7 @@ namespace Virtaul_Computer
 
         private void DrawPanel_MouseMove(object sender, MouseEventArgs e)
         {
-            mouseLocation = new Point((int)(e.Location.X * ViewSize), (int)(e.Location.Y * ViewSize));
+            mouseLocation = new Point((int)(e.Location.X * ViewSize) - ViewX, (int)(e.Location.Y * ViewSize) - ViewY);
 
             if (SelectedGate != null)
             {
@@ -251,23 +251,23 @@ namespace Virtaul_Computer
         {
             restartLoop:;
 
-            foreach (var gate in VisualLogicGate.GateTable)
+            foreach (var gate in LogicGate.GateTable)
             {
                 if (gate is VisualLogicGate vGate)
                 {
                     if (e.Button == MouseButtons.Left)
                     {
-                        if (vGate.Out1NodeLocation.Contains(e.Location) && !IsConnectionBeingDragged)
+                        if (vGate.Out1NodeLocation.Contains(mouseLocation) && !IsConnectionBeingDragged)
                         {
                             IsConnectionBeingDragged = true;
                             ConnectionDraggingFrom = vGate;
                         }
-                        else if (vGate.In1NodeLocation.Contains(e.Location) && IsConnectionBeingDragged && ConnectionDraggingFrom != null)
+                        else if (vGate.In1NodeLocation.Contains(mouseLocation) && IsConnectionBeingDragged && ConnectionDraggingFrom != null)
                         {
                             IsConnectionBeingDragged = false;
                             vGate.In1Gate = ConnectionDraggingFrom;
                         }
-                        else if (vGate.In2NodeLocation.Contains(e.Location) && IsConnectionBeingDragged && ConnectionDraggingFrom != null)
+                        else if (vGate.In2NodeLocation.Contains(mouseLocation) && IsConnectionBeingDragged && ConnectionDraggingFrom != null)
                         {
                             IsConnectionBeingDragged = false;
                             vGate.In2Gate = ConnectionDraggingFrom;
@@ -275,15 +275,15 @@ namespace Virtaul_Computer
                     }
                     else if (e.Button == MouseButtons.Right)
                     {
-                        if (vGate.In1NodeLocation.Contains(e.Location))
+                        if (vGate.In1NodeLocation.Contains(mouseLocation))
                         {
                             vGate.In1Gate = null;
                         }
-                        else if (vGate.In2NodeLocation.Contains(e.Location))
+                        else if (vGate.In2NodeLocation.Contains(mouseLocation))
                         {
                             vGate.In2Gate = null;
                         }
-                        else if ((new Rectangle(vGate.Location, new Size(VisualLogicGate.GateSize, VisualLogicGate.GateSize))).Contains(e.Location))
+                        else if ((new Rectangle(vGate.Location, new Size(VisualLogicGate.GateSize, VisualLogicGate.GateSize))).Contains(mouseLocation))
                         {
                             vGate.Remove();
                             goto restartLoop;
