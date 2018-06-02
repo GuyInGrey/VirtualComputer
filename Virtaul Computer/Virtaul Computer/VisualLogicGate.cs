@@ -7,11 +7,14 @@ using System.Text;
 using System.Threading.Tasks;
 using System.IO;
 using System.Reflection;
+using Newtonsoft.Json;
 
 namespace Virtaul_Computer
 {
     public class VisualLogicGate : LogicGate
     {
+        public static Dictionary<string, VisualLogicGate> _GateTable = new Dictionary<string, VisualLogicGate>();
+
         public static Hashtable GateImages { get; } = new Hashtable();
 
         public static int GateSize { get; set; } = 70;
@@ -19,6 +22,11 @@ namespace Virtaul_Computer
         public static int EllipseSize { get; set; } = 15;
 
         public static int InputBoxOffset => GateSize / 4;
+
+        [JsonIgnore]
+        public bool In1 => In1Gate != null ? GetGate(In1Gate).Output : false;
+        [JsonIgnore]
+        public bool In2 => In2Gate != null ? GetGate(In2Gate).Output : false;
 
         static VisualLogicGate()
         {
@@ -56,22 +64,66 @@ namespace Virtaul_Computer
 
         }
 
-        public VisualLogicGate(GateType type, LogicGate in1, LogicGate in2) : base(type, in1, in2) => 
+        [JsonConstructor]
+        public VisualLogicGate(GateType type, LogicGate in1, LogicGate in2) : base(type, in1, in2)
+        {
             Location = new Point(0, 0);
+
+            do
+            {
+                GUID = System.Guid.NewGuid().ToString();
+            }
+            while (_GateTable.ContainsKey(GUID));
+        }
+
+        public VisualLogicGate GenNewID(Dictionary<string, VisualLogicGate> table)
+        {
+            var oldID = GUID;
+            
+            do
+            {
+                GUID = Guid.NewGuid().ToString();
+            }
+            while (table.ContainsKey(GUID));
+
+            foreach (var gate in table)
+            {
+                if (gate.Value.In1Gate == oldID)
+                {
+                    gate.Value.In1Gate = GUID;
+                }
+                if (gate.Value.In2Gate == oldID)
+                {
+                    gate.Value.In2Gate = GUID;
+                }
+            }
+
+            return this;
+        }
+
+        public static VisualLogicGate GetGate(string guid)
+        {
+            if (guid == null)
+            {
+                return null;
+            }
+
+            return _GateTable[guid];
+        }
 
         public void Draw(Graphics e)
         {
             if (GateType == GateType.LIGHT)
             {
-                e.DrawImage((Bitmap)GateImages[Check() ? "LIGHT_ON" : "LIGHT_OFF"], Location.X, Location.Y, GateSize, GateSize);
+                e.DrawImage((Bitmap)GateImages[Output ? "LIGHT_ON" : "LIGHT_OFF"], Location.X, Location.Y, GateSize, GateSize);
             }
             else
             {
                 e.DrawImage((Bitmap)GateImages[GateType.ToString()], Location.X, Location.Y, GateSize, GateSize);
             }
 
-            var g1 = (VisualLogicGate)In1Gate;
-            var g2 = (VisualLogicGate)In2Gate;
+            var g1 = (VisualLogicGate)GetGate(In1Gate);
+            var g2 = (VisualLogicGate)GetGate(In2Gate);
 
             var tension = 0.3f;
             var onColor = Color.Cyan;
@@ -87,7 +139,7 @@ namespace Virtaul_Computer
                     new Point(g1.Location.X + GateSize + (EllipseSize / 2), g1.Location.Y + (GateSize / 2))
                 };
 
-                e.DrawCurve(new Pen(g1.Check() ? onColor : offColor, 5f), points.ToArray(), tension);
+                e.DrawCurve(new Pen(g1.Output ? onColor : offColor, 5f), points.ToArray(), tension);
                 
                 if (MainForm.Debug)
                 {
@@ -99,8 +151,6 @@ namespace Virtaul_Computer
             }
             if (g2 != null)
             {
-                //e.DrawLine(new Pen(g2.Check() ? Color.Yellow : Color.Blue, 5f), new Point(Location.X, Location.Y + GateSize), new Point(g2.Location.X + GateSize, g2.Location.Y + (GateSize / 2)));
-
                 var points = new List<Point>
                 {
                     new Point(Location.X - (EllipseSize / 2), Location.Y + (EllipseSize / 2) + GateSize),
@@ -109,7 +159,7 @@ namespace Virtaul_Computer
                     new Point(g2.Location.X + GateSize + (EllipseSize / 2), g2.Location.Y + (GateSize / 2))
                 };
 
-                e.DrawCurve(new Pen(g2.Check() ? onColor : offColor, 5f), points.ToArray(), tension);
+                e.DrawCurve(new Pen(g2.Output ? onColor : offColor, 5f), points.ToArray(), tension);
 
                 if (MainForm.Debug)
                 {
@@ -177,6 +227,121 @@ namespace Virtaul_Computer
 
                 return rec;
             }
+
+        }
+
+        public static void RecurseGates(Action<VisualLogicGate> toRun) => 
+            RecurseGates(toRun, false);
+
+        public static void RecurseGates(Action<VisualLogicGate> toRun, bool rerunIfModified)
+        {
+            Beginning:;
+
+            try
+            {
+                foreach (var gateObject in _GateTable.Values)
+                {
+                    if (gateObject is VisualLogicGate gate)
+                    {
+                        toRun(gate);
+                    }
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                if (rerunIfModified)
+                {
+                    goto Beginning;
+                }
+            }
+        }
+
+        [JsonIgnore]
+        public bool Output { get; private set; }
+
+        public void Update() => Output = Check();
+
+        private bool Check()
+        {
+            switch (GateType)
+            {
+                case GateType.AND:
+                    if (In1Gate == null || In2Gate == null)
+                    {
+                        return false;
+                    }
+                    return In1 && In2;
+                case GateType.OR:
+                    if (In1Gate == null || In2Gate == null)
+                    {
+                        return false;
+                    }
+                    return In1 || In2;
+                case GateType.NOT:
+                    if (In1Gate == null)
+                    {
+                        return true;
+                    }
+                    return !In1;
+                case GateType.NAND:
+                    if (In1Gate == null || In2Gate == null)
+                    {
+                        return true;
+                    }
+                    return !(In1 && In2);
+                case GateType.NOR:
+                    if (In1Gate == null || In2Gate == null)
+                    {
+                        return true;
+                    }
+                    return !(In1 || In2);
+                case GateType.XOR:
+                    if (In1Gate == null || In2Gate == null)
+                    {
+                        return false;
+                    }
+                    return (In1 != In2); // Quicker way of doing it.
+                                         //return (!(In1 && In2)) && (!(!In1 && !In2)); // "Correct" way of doing it.
+                case GateType.XNOR:
+                    if (In1Gate == null || In2Gate == null)
+                    {
+                        return false;
+                    }
+                    return (In1 == In2);
+                case GateType.ON:
+                    return true;
+                case GateType.OFF:
+                    return false;
+                case GateType.LIGHT:
+                    if (In1Gate == null)
+                    {
+                        return false;
+                    }
+                    return In1;
+                case GateType.BUTTON_OFF:
+                    return false;
+                case GateType.BUTTON_ON:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        public void Remove()
+        {
+            _GateTable.Remove(GUID);
+
+            RecurseGates(gate =>
+            {
+                if (gate.In1Gate == GUID)
+                {
+                    gate.In1Gate = GUID;
+                }
+                if (gate.In2Gate == GUID)
+                {
+                    gate.In2Gate = GUID;
+                }
+            });
         }
     }
 }
