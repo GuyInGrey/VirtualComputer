@@ -335,11 +335,11 @@ namespace Virtaul_Computer
             {
                 if (gate.In1Gate == GUID)
                 {
-                    gate.In1Gate = GUID;
+                    gate.In1Gate = null;
                 }
                 if (gate.In2Gate == GUID)
                 {
-                    gate.In2Gate = GUID;
+                    gate.In2Gate = null;
                 }
             });
         }
