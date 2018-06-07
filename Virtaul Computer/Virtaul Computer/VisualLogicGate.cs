@@ -122,8 +122,8 @@ namespace Virtaul_Computer
                 e.DrawImage((Bitmap)GateImages[GateType.ToString()], Location.X, Location.Y, GateSize, GateSize);
             }
 
-            var g1 = (VisualLogicGate)GetGate(In1Gate);
-            var g2 = (VisualLogicGate)GetGate(In2Gate);
+            var g1 = GetGate(In1Gate);
+            var g2 = GetGate(In2Gate);
 
             var tension = 0.3f;
             var onColor = Color.Cyan;
